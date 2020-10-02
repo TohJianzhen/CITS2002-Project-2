@@ -1,26 +1,29 @@
 #include "mergetars.h"
-
+#include <dirent.h> 
 // tar -cvf [CREATE NEW TAR FILE]
 // tar -xvf [EXPAND THE FILE]
 // tar -tvf [TO LIST FILE]
 
-
+/**
 //DATA STRUCTURE DEFINE IN GLOBALS?
-
-struct{
+struct {
     char *dirname;
 } *dirnames = NULL;
 
 int ndirnames = 0;    
 
-struct{
-    char *file;
+struct {
+    char *name;
+    char *fullpath;
     char *tempdir;
     int lastmodified;
     int bytes;    
 } *files = NULL;
 
 int nfiles = 0;
+
+**/
+// processess
 
 void add_directory(){
     char newdirname[100];
@@ -40,14 +43,14 @@ void add_directory(){
 }
 
 //TO DO : blm di check
-void add_files(char *file){
+void add_files(char file[]){
+    char *filename = strdup(file + lenTemplate);
+    
     struct stat stat_buffer;
-                                                                                
     if(stat(file, &stat_buffer) != 0) { // can we 'stat' the file's attributes?
         perror("Error " );
         exit(EXIT_FAILURE);
     }
-                                                                                
     // dont really need the else so just delete?
     else{
                                                                                 
@@ -57,7 +60,7 @@ void add_files(char *file){
                                                                                 
         //check for duplicates
         for(int i = 0; i < nfiles; i++){
-            if(strcmp(files[i].file, file) == 0){
+            if(strcmp(files[i].name, filename) == 0){
                 duplicate = true;
                 int prevlastmodified = files[i].lastmodified;
                 int prevbytes = files[i].bytes;
@@ -67,10 +70,11 @@ void add_files(char *file){
                 }
                                                                                 
                 if(prevlastmodified < newlastmodified){
-                files[i].file = strdup(file);
-                //files[i].tempdir = strdup(dirname);
-                files[i].lastmodified = newlastmodified;
-                files[i].bytes = newbytes;
+                    files[i].name = strdup(filename);
+                    files[i].fullpath = strdup(file);
+                    //files[i].tempdir = strdup(dirname);
+                    files[i].lastmodified = newlastmodified;
+                    files[i].bytes = newbytes;
                 }
                                                                                 
                 else{
@@ -78,7 +82,8 @@ void add_files(char *file){
                         return;
                     }
                     else{
-                        files[i].file = strdup(file);
+                        files[i].name = strdup(filename);
+                        files[i].fullpath = strdup(file);
                         //files[i].tempdir = strdup(dirname);
                         files[i].lastmodified = newlastmodified;
                         files[i].bytes = newbytes;
@@ -88,7 +93,8 @@ void add_files(char *file){
         }
         if(duplicate == false){
             files = realloc(files, (nfiles+1) * sizeof(files[0]));
-            files[nfiles].file = strdup(file);
+            files[nfiles].name = strdup(filename);
+            files[nfiles].fullpath = strdup(file);
             //files[nfiles].tempdir = strdup(dirname);
             files[nfiles].lastmodified = newlastmodified;
             files[nfiles].bytes = newbytes;
@@ -101,8 +107,8 @@ void add_files(char *file){
 void find_files(char dirname[]){
     
     //Check if file or directory
-    struct stat  stat_buffer;                                                   
-    
+    struct stat  stat_buffer;
+
     struct dirent *pDirent;
     DIR *pDir;
     
@@ -111,36 +117,40 @@ void find_files(char dirname[]){
         perror("Error");
         exit(EXIT_FAILURE);
     }
-    
+    printf("the current dirname is %s\n", dirname);
+    printf("\n");    
     while((pDirent = readdir(pDir)) != NULL){
         char *filename = pDirent->d_name;
-
-        if(dirname == NULL){
-            printf("cannot find file with name[%s]\n", filename);
-            exit(EXIT_FAILURE);
-        }
         
         if( (strcmp(filename, ".") == 0 || (strcmp(filename, "..")) == 0 || (*pDirent->d_name) == '.' )){
         }
     
         else{
-            strcat(dirname, "/");
-            strcat(dirname, filename);
-            printf("%s\n", dirname);
-            
-            stat(dirname, &stat_buffer);
+            char *path = strdup(dirname);  
+            path = realloc(path, strlen(path) + strlen(filename) + 2);
+            strcat(path, "/");
+            strcat(path, filename);
+            printf("the path is %s\n", path);   
+            stat(path, &stat_buffer);
             
             if(S_ISREG(stat_buffer.st_mode)){
                 printf ("[%s] is a file \n", filename);
-                add_files(dirname);
+                printf("The path is %s\n", path);
+                printf("The dirname is %s\n", dirname); 
+                printf("\n");
+                add_files(path);
             }
 
             else if(S_ISDIR(stat_buffer.st_mode)){
                 printf ("[%s] is another directory \n", filename);
-                find_files(dirname);
+                printf("The path is %s\n", path);                               
+                printf("The dirname is %s\n", dirname);
+                printf("\n");
+                find_files(path);
             }
             //Delete this
-            else{ printf("[%s] failed...", filename);}
+            else{ printf("[%s] failed...\n", filename);printf("\n");}
+            free(path);
         }
     }
     closedir(pDir);
@@ -258,6 +268,15 @@ int main(int argc, char *argv[]){
 //    create_tar(argv[argc-1]);
 //    cleanup_inputs();
     printf("the no of dir is : %d\n", ndirnames);  
+
+    for(int i = 0; i < ndirnames; i++){
+        find_files(dirnames[i].dirname);
+    }    
+    for(int i =0; i< nfiles; i++){                                              
+        printf("the files are %s\n", files[i].name);                            
+    }
+    free(files);
+    free(dirnames);
     exit(EXIT_SUCCESS);
 
 }
