@@ -169,9 +169,18 @@ int expand_tar(char filename[], char dirname[]){
 }
 
 // TO DO : hrs di kerjain... :(
+// Not sure if it works tho
 char *copy_files(){
-    char *ptr = "test";
-    return ptr;
+    char *dir_name = mkdtemp(TEMPLATE);
+    for(int i = 0; i < nflies; i++)
+    {
+        dir_name = opendir(".");
+        char *path = strdup(dirname);
+        path = malloc(strlen(path) + strlen(filename) + 2);
+        path = strcpy(files[i], path);
+    }
+    closedir(path);
+    return dir_name;
 }
 
  
