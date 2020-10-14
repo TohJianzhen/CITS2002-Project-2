@@ -1,4 +1,5 @@
 #include "mergetars.h"
+#include <fcntl.h>  
 #include <dirent.h>
 // tar -cvf [CREATE NEW TAR FILE]
 // tar -xvf [EXPAND THE FILE]
@@ -20,6 +21,9 @@ struct {
 int nfiles = 0;
 **/
 // Do i remove this part? ^
+
+
+
 
 /***********************************************************************************
  *  This function adds a new directory with the TEMPLATE in the mergetars header file
@@ -47,9 +51,9 @@ void add_directory()
 /***********************************************************************************
  *  This function adds files to the temporary directory
  *  A file array with char type is taken as an argument
- *  TO DO : blm di check
+ *  TO DO : Needs Checking
  ***********************************************************************************/
-void add_files(char file[])
+void add_files(char file[], char individualname[])
 {
     char *filename = strdup(file + lenTemplate);
     struct stat stat_buffer;
@@ -91,7 +95,8 @@ void add_files(char file[])
 
                 if(prevlastmodified < newlastmodified)
                 {
-                    files[i].name = strdup(filename);
+                    files[i].name = strdup(individualname);
+                    files[i].fullname = strdup(filename);
                     files[i].fullpath = strdup(file);
                     //files[i].tempdir = strdup(dirname);
                     files[i].lastmodified = newlastmodified;
@@ -107,7 +112,8 @@ void add_files(char file[])
                     }
                     else
                     {
-                        files[i].name = strdup(filename);
+                        files[i].name = strdup(individualname);
+                        files[i].fullname = strdup(filename);
                         files[i].fullpath = strdup(file);
                         //files[i].tempdir = strdup(dirname);
                         files[i].lastmodified = newlastmodified;
@@ -121,7 +127,8 @@ void add_files(char file[])
         if(duplicate == false)
         {
             files = realloc(files, (nfiles+1) * sizeof(files[0]));
-            files[nfiles].name = strdup(filename);
+            files[nfiles].name = strdup(individualname);
+            files[nfiles].fullname = strdup(filename);
             files[nfiles].fullpath = strdup(file);
             //files[nfiles].tempdir = strdup(dirname);
             files[nfiles].lastmodified = newlastmodified;
@@ -134,7 +141,6 @@ void add_files(char file[])
 /***********************************************************************************
  *  This function finds files in a directory
  *  A directory name is taken as an argument
- *  TO DO : blm di check
  ***********************************************************************************/
 void find_files(char dirname[])
 {
@@ -180,7 +186,7 @@ void find_files(char dirname[])
                 printf("The path is %s\n", path);
                 printf("The dirname is %s\n", dirname);
                 printf("\n");
-                add_files(path);
+                add_files(path, filename);
             }
 
             //  Check if it's a DIRECTORY
@@ -220,18 +226,140 @@ int expand_tar(char filename[], char dirname[])
 }
 
 /**********************************************************************************************
+*
+*
+*
+**********************************************************************************************/
+void recursive_mkdir(char *path, mode_t mode){
+
+    char *p = NULL;                                                             
+    int pathlen = strlen(path) + 1;                                             
+    char temp[pathlen];                                                         
+    struct stat stat_buffer;                                                    
+    size_t len = strnlen(path, pathlen);                                        
+                                                                                
+    memcpy(temp, path, len);                                                    
+    temp[len] = '\0';                                                           
+                                                                                
+    len = strlen(temp);                                                         
+    if(temp[len-1] == '/'){                                                     
+        temp[len - 1] = 0;                                                      
+    }                                                                           
+                                                                                
+    for(p = temp + 1; *p; p++){                                                 
+        if(*p == '/'){                                                          
+            *p = 0;                                                             
+            if(stat(temp, &stat_buffer) != 0){                                  
+                if(mkdir(temp, mode) < 0){                                      
+                    exit(EXIT_FAILURE);                                         
+                }                                                               
+            }                                                                   
+            *p = '/';                                                           
+        }                                                                       
+    }                                                                           
+                                                                                
+    if(stat(temp, &stat_buffer) != 0){                                          
+        if(mkdir(temp, mode) < 0){                                              
+            exit(EXIT_FAILURE);                                                 
+        }                                                                       
+    }
+}
+
+
+
+/**********************************************************************************************
  *  This function finds all the file stored in the Data Structure and stores it in a directory
  *  This function does not take any arguments
- *  TO DO : hrs di kerjain... :(
  *  Not sure if it works tho
  **********************************************************************************************/
-char *copy_files()
+void copy_files()
 {
+    //Seteup where the files will be copied to
+    char newdirname[10000];
+    strcpy(newdirname, TEMPLATE);
+    mkdtemp(newdirname);
+    DIR *outDir = opendir(newdirname);
+
+    if(outDir == NULL){
+        perror("ERROR: Creating directory\n");
+        exit(EXIT_FAILURE);
+    }
+
+    for(int i = 0; i < nfiles; i++){    
+        //Open the source file to read
+        struct stat stat_buffer; 
+        if(stat("/tmp/mt-wjDs4g/pdfTest/trialtar", &stat_buffer) != 0) {
+            perror("Error " );
+            exit(EXIT_FAILURE);
+        }
+        char *fullpath = files[i].fullpath;
+        int src_fd = open(fullpath, O_RDONLY);
+        if(src_fd == -1){
+            perror("ERROR: CANNOT OPEN SRC FILE \n");
+            exit(EXIT_FAILURE);
+        }
+        
+        //Create the new file
+        char *path = strdup(newdirname);
+        //get the length of the full name - the filename itself - the seperator
+        int plen = strlen(fullpath);
+        char *individualname = files[i].name;
+        int ilen = strlen(individualname);
+        int len = plen - ilen - 1;
+        path = realloc(path, strlen(path) + len + 1);
+        memcpy(path, fullpath, len);
+    
+    
+        //    mode_t mode = stat_buffer.st_mode; 
+        recursive_mkdir(path,  S_IRWXU);
+
+        char *filename = strdup(path);
+        filename = realloc(filename, strlen(filename) + ilen + 2);
+        strcat(filename, "/");
+        strcat(filename, individualname);
+    
+        int out_fd = open(filename, O_CREAT | O_WRONLY, 0600);
+        if(out_fd == -1){
+            perror("ERROR : CANNOT OPEN OUTFILE");
+            exit(EXIT_FAILURE);
+        }   
+
+        //Read from old file, write to the new file and change the utime
+        int bytes = (int) stat_buffer.st_size;
+    
+        while(1){
+
+            unsigned char buffer[bytes];
+            int err = read(src_fd, buffer, bytes);
+            if(err == -1){
+                perror("ERROR :");
+                exit(EXIT_FAILURE);
+            }
+            int n = err;
+            if(n == 0) break;
+
+            err  = write(out_fd, buffer, n);
+            if(err == -1){
+                perror("ERROR :");
+                exit(EXIT_FAILURE);
+            }
+        }
+
+        //Close
+        close(src_fd);
+        close(out_fd);
+
+        free(path); 
+        free(filename);
+    }
+    closedir(outDir);
+
+/**
     char *dir_name = mkdtemp(TEMPLATE);
 
     //  Iterates through all the files in the DS
     //  Allocates memory in the directory to store the files
-    for(int i = 0; i < nflies; i++)
+    for(int i = 0; i < nfiles; i++)
     {
         dir_name = opendir(".");
         char *path = strdup(dirname);
@@ -239,7 +367,10 @@ char *copy_files()
         path = strcpy(files[i], path);
     }
     closedir(path);
-    return dir_name;
+**/   
+    dirnames[ndirnames].dirname = strdup(newdirname);
+    ndirnames++;
+    
 }
 
 /**********************************************************************************************
@@ -266,7 +397,7 @@ int create_tar(char filename[])
     //copy files from the temp directory into the output file
     //create tar using execl
     int create;
-    char *tempdir = copy_files();
+    char *tempdir = dirnames[ndirnames-1].dirname;
 
     //I cant think of a better way to check if its tgz or tar
     char *file = filename;
@@ -321,6 +452,7 @@ void cleanup_inputs()
 }
 
 
+
 int main(int argc, char *argv[]){
 
     //Check arguments
@@ -355,8 +487,8 @@ int main(int argc, char *argv[]){
         }
      }
 
-//    copy_files();
-//    create_tar(argv[argc-1]);
+    copy_files();
+    create_tar(argv[argc-1]);
 //    cleanup_inputs();
     printf("the no of dir is : %d\n", ndirnames);
 

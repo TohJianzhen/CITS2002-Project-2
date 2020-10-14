@@ -25,7 +25,9 @@ extern struct Directory *dirnames;
 extern int ndirnames;
                                                                           
 struct File{
-	char *name;                                                                 
+	
+	char *name;
+	char *fullname;                                                                 
     	char *fullpath;                                                             
     	char *tempdir;                                                              
     	int lastmodified;                                                           
