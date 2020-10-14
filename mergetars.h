@@ -29,7 +29,7 @@ struct File{
 	char *name;
 	char *fullname;                                                                 
     	char *fullpath;                                                             
-    	char *tempdir;                                                              
+    	char *dirname;                                                              
     	int lastmodified;                                                           
     	int bytes;
 }; 

@@ -1,29 +1,11 @@
 #include "mergetars.h"
 #include <fcntl.h>  
 #include <dirent.h>
+#include <sys/time.h> 
+
 // tar -cvf [CREATE NEW TAR FILE]
 // tar -xvf [EXPAND THE FILE]
 // tar -tvf [TO LIST FILE]
-
-/**
-//DATA STRUCTURE DEFINE IN GLOBALS?
-struct {
-    char *dirname;
-} *dirnames = NULL;
-int ndirnames = 0;
-struct {
-    char *name;
-    char *fullpath;
-    char *tempdir;
-    int lastmodified;
-    int bytes;
-} *files = NULL;
-int nfiles = 0;
-**/
-// Do i remove this part? ^
-
-
-
 
 /***********************************************************************************
  *  This function adds a new directory with the TEMPLATE in the mergetars header file
@@ -31,17 +13,11 @@ int nfiles = 0;
  ***********************************************************************************/
 void add_directory()
 {
-    char newdirname[100];
+    char newdirname[1000];
 
     strcpy(newdirname, TEMPLATE);
     mkdtemp(newdirname);
-   /**
-    // if want to use this need *newdirname instead
-    if(newdirname == NULL){
-        perror("Error");
-        exit(EXIT_FAILURE);
-    }
-    **/
+    
     //  Reallocates memory for the new directory
     dirnames = realloc(dirnames, (ndirnames + 1) * sizeof(dirnames[0]));
     dirnames[ndirnames].dirname = strdup(newdirname);
@@ -53,9 +29,10 @@ void add_directory()
  *  A file array with char type is taken as an argument
  *  TO DO : Needs Checking
  ***********************************************************************************/
-void add_files(char file[], char individualname[])
+void add_files(char file[], char individualname[], char directories[])
 {
     char *filename = strdup(file + lenTemplate);
+    char* dirname = strdup(directories + lenTemplate);
     struct stat stat_buffer;
 
     //  Checks if the files contents are valid
@@ -81,7 +58,7 @@ void add_files(char file[], char individualname[])
         {
 
         //  FIRST
-            if(strcmp(files[i].name, filename) == 0)
+            if(strcmp(files[i].fullname, filename) == 0)
             {
                 duplicate = true;
                 int prevlastmodified = files[i].lastmodified;
@@ -98,7 +75,7 @@ void add_files(char file[], char individualname[])
                     files[i].name = strdup(individualname);
                     files[i].fullname = strdup(filename);
                     files[i].fullpath = strdup(file);
-                    //files[i].tempdir = strdup(dirname);
+                    files[i].dirname = strdup(dirname);
                     files[i].lastmodified = newlastmodified;
                     files[i].bytes = newbytes;
                 }
@@ -115,7 +92,7 @@ void add_files(char file[], char individualname[])
                         files[i].name = strdup(individualname);
                         files[i].fullname = strdup(filename);
                         files[i].fullpath = strdup(file);
-                        //files[i].tempdir = strdup(dirname);
+                        files[i].dirname = strdup(dirname);
                         files[i].lastmodified = newlastmodified;
                         files[i].bytes = newbytes;
                     }
@@ -130,7 +107,7 @@ void add_files(char file[], char individualname[])
             files[nfiles].name = strdup(individualname);
             files[nfiles].fullname = strdup(filename);
             files[nfiles].fullpath = strdup(file);
-            //files[nfiles].tempdir = strdup(dirname);
+            files[nfiles].dirname = strdup(dirname);
             files[nfiles].lastmodified = newlastmodified;
             files[nfiles].bytes = newbytes;
             nfiles++;
@@ -186,7 +163,7 @@ void find_files(char dirname[])
                 printf("The path is %s\n", path);
                 printf("The dirname is %s\n", dirname);
                 printf("\n");
-                add_files(path, filename);
+                add_files(path, filename, dirname);
             }
 
             //  Check if it's a DIRECTORY
@@ -265,6 +242,32 @@ void recursive_mkdir(char *path, mode_t mode){
     }
 }
 
+/**********************************************************************************************
+*
+*
+**********************************************************************************************/
+void modify_time(char* oldfile, char *newfile){
+    struct stat stat_old;
+    if(stat(oldfile, &stat_old) == -1){
+        perror("ERROR: Fail to stat() old file \n");
+        exit(EXIT_FAILURE);
+    }
+    
+    struct timeval new_times[2];
+    struct stat stat_new;
+    
+    if(stat(newfile, &stat_new) == -1){
+        perror("ERROR: Fail to stat() new file \n");
+        exit(EXIT_FAILURE);
+    }
+    new_times[0].tv_sec = stat_old.st_mtime;
+    new_times[1].tv_sec = stat_old.st_mtime;
+    
+    if(utimes(newfile, new_times) == -1){
+        perror("ERROR: Fail to reset time \n");
+        exit(EXIT_FAILURE);
+    }
+}
 
 
 /**********************************************************************************************
@@ -274,10 +277,9 @@ void recursive_mkdir(char *path, mode_t mode){
  **********************************************************************************************/
 void copy_files()
 {
-    //Seteup where the files will be copied to
-    char newdirname[10000];
-    strcpy(newdirname, TEMPLATE);
-    mkdtemp(newdirname);
+    //Setup where the files will be copied to
+    add_directory();
+    char *newdirname = dirnames[ndirnames-1].dirname;
     DIR *outDir = opendir(newdirname);
 
     if(outDir == NULL){
@@ -288,11 +290,11 @@ void copy_files()
     for(int i = 0; i < nfiles; i++){    
         //Open the source file to read
         struct stat stat_buffer; 
-        if(stat("/tmp/mt-wjDs4g/pdfTest/trialtar", &stat_buffer) != 0) {
+        char *fullpath = strdup(files[i].fullpath);
+        if(stat(fullpath, &stat_buffer) != 0) {
             perror("Error " );
             exit(EXIT_FAILURE);
         }
-        char *fullpath = files[i].fullpath;
         int src_fd = open(fullpath, O_RDONLY);
         if(src_fd == -1){
             perror("ERROR: CANNOT OPEN SRC FILE \n");
@@ -300,24 +302,18 @@ void copy_files()
         }
         
         //Create the new file
-        char *path = strdup(newdirname);
-        //get the length of the full name - the filename itself - the seperator
-        int plen = strlen(fullpath);
-        char *individualname = files[i].name;
-        int ilen = strlen(individualname);
-        int len = plen - ilen - 1;
-        path = realloc(path, strlen(path) + len + 1);
-        memcpy(path, fullpath, len);
-    
+        char *directories = strdup(newdirname);
+        directories = realloc(directories, strlen(directories) + strlen(files[i].dirname) + 1);
+        strcat(directories, files[i].dirname);
+        printf("The dirname is %s\n", directories); 
     
         //    mode_t mode = stat_buffer.st_mode; 
-        recursive_mkdir(path,  S_IRWXU);
+        recursive_mkdir(directories,  S_IRWXU);
 
-        char *filename = strdup(path);
-        filename = realloc(filename, strlen(filename) + ilen + 2);
-        strcat(filename, "/");
-        strcat(filename, individualname);
-    
+        char *filename = strdup(newdirname);
+        filename = realloc(filename, strlen(filename) + strlen(files[i].fullname) + 1);
+        strcat(filename, files[i].fullname);
+        printf("The filename is %s\n", filename); 
         int out_fd = open(filename, O_CREAT | O_WRONLY, 0600);
         if(out_fd == -1){
             perror("ERROR : CANNOT OPEN OUTFILE");
@@ -344,12 +340,14 @@ void copy_files()
                 exit(EXIT_FAILURE);
             }
         }
-
+        
+        modify_time(fullpath, filename);
+        
         //Close
         close(src_fd);
         close(out_fd);
 
-        free(path); 
+        free(directories); 
         free(filename);
     }
     closedir(outDir);
@@ -368,8 +366,6 @@ void copy_files()
     }
     closedir(path);
 **/   
-    dirnames[ndirnames].dirname = strdup(newdirname);
-    ndirnames++;
     
 }
 
@@ -405,19 +401,36 @@ int create_tar(char filename[])
     int len = strlen(file);
     const char *last_four = &file[len-4];
 
-    if(strcmp(last_four, tar) == 0)
-    {
-        create = execlp("tar", "tar", "-cvf", filename, *tempdir, NULL);
+    int pid;
+    int status;
+    pid = fork();
+    if(pid == -1){
+        perror("ERROR: Fork Fail \n");
+        exit(EXIT_FAILURE);
     }
 
-    else
-    {
-        create = execlp("tar", "tar", "-cvf", filename, *tempdir, NULL);
+    else if(pid == 0){
+        if(strcmp(last_four, tar) == 0){
+            create = execlp("tar", "tar", "-cvf", filename, tempdir, NULL);
+            perror("ERROR: Could not create tar \n");
+            exit(EXIT_FAILURE); 
+       }
+
+        else{
+            create = execlp("tar", "tar", "-cvf", filename, tempdir, NULL);
+            perror("ERROR: Could not create tar \n");
+            exit(EXIT_FAILURE);
+        }
+    }
+    
+    else{
+        wait(&status);
+        if(WIFEXITED(status) && WEXITSTATUS(status) != 0){
+            perror("ERROR: Exit fail \n");
+            exit(EXIT_FAILURE);
+        }
     }
 
-        perror("Error from create tar");
-   //will not work though cause after execlp
-    remove_dir(tempdir);
     return 0;
 }
 
@@ -430,12 +443,13 @@ void cleanup_inputs()
 {
     for(int i = 0; i < ndirnames; i++)
     {
+        char *dirname = dirnames[i].dirname;
         int pid;
         int status;
         pid = fork();
         if(pid == 0)
         {
-            remove_dir(dirnames[i].dirname);
+            execlp("rm", "rm", "-rf", dirname, NULL);
         }
         else
         {
@@ -487,10 +501,8 @@ int main(int argc, char *argv[]){
         }
      }
 
-    copy_files();
-    create_tar(argv[argc-1]);
-//    cleanup_inputs();
     printf("the no of dir is : %d\n", ndirnames);
+
 
     for(int i = 0; i < ndirnames; i++){
         find_files(dirnames[i].dirname);
@@ -498,7 +510,17 @@ int main(int argc, char *argv[]){
     for(int i =0; i< nfiles; i++){
         printf("the files are %s\n", files[i].name);
     }
-    free(files);
+
+    copy_files(); 
+    create_tar(argv[argc-1]);
+    cleanup_inputs();    
+//    free(files);
+//    free(dirnames);
+
+    for(int i = 0; i < ndirnames; i++){                                         
+        printf("The dirname is : %s\n", dirnames[i].dirname);
+    } 
+    free(files);                                                                
     free(dirnames);
     exit(EXIT_SUCCESS);
 
