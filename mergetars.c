@@ -2,7 +2,7 @@
 
 // CITS2002 Project 2 2020
 // Names:               Jianzhen Toh, Nathania Chrestella Teruna
-// Student numbers :            ,22642853
+// Student numbers :    22582509    , 22642853
 
 // tar -cvf [CREATE NEW TAR FILE]
 // tar -xvf [EXPAND THE FILE]
